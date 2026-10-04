@@ -11,7 +11,9 @@ pub fn AppLayout() -> Element {
     rsx! { main { class: "app-shell", div { class: "glow glow-one" } div { class: "glow glow-two" }
     div { class: "container", header { class: "topbar",
         Link { class: "brand", to: Route::FeedPage {}, div { class: "brand-mark", "R" } div { p { class: "brand-name", "Rustboard" } p { class: "brand-caption", "Community notes, built in Rust" } } }
-        nav { class: "nav-links", Link { to: Route::FeedPage {}, "Feed" } Link { to: Route::AuthPage {}, if auth().is_some() { "Account" } else { "Sign in" } } }
+            nav { class: "nav-links", Link { to: Route::FeedPage {}, "Feed" }
+                if auth().is_some() { Link { to: Route::ComposePostPage {}, "Write" } Link { to: Route::ProfilePage {}, "Profile" } } else { Link { to: Route::AuthPage {}, "Sign in" } }
+            }
     } Outlet::<Route> {} } } }
 }
 

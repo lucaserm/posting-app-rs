@@ -47,6 +47,11 @@ pub async fn list_posts(
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
     let sort = query.sort.as_deref().unwrap_or("recent");
+    let search = query
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|term| !term.is_empty());
 
     if !(1..=100).contains(&limit) {
         return Err(ApiError::InvalidInput(String::from(
@@ -59,6 +64,7 @@ pub async fn list_posts(
             "offset cannot be negative",
         )));
     }
+
     if !matches!(sort, "recent" | "discussed") {
         return Err(ApiError::InvalidInput(String::from(
             "sort must be either recent or discussed",
@@ -70,15 +76,23 @@ pub async fn list_posts(
     } else {
         "posts.id DESC"
     };
+
     let query = format!(
         "SELECT posts.id, posts.title, posts.content, COUNT(comments.id)::BIGINT AS comment_count
          FROM posts
          LEFT JOIN comments ON comments.post_id = posts.id
+         WHERE (
+            $1::TEXT IS NULL
+            OR posts.title ILIKE '%' || $1 || '%'
+            OR posts.content ILIKE '%' || $1 || '%'
+         )
          GROUP BY posts.id
          ORDER BY {order_by}
-         LIMIT $1 OFFSET $2"
+         LIMIT $2 OFFSET $3"
     );
+
     let posts = sqlx::query_as::<_, Post>(&query)
+        .bind(search)
         .bind(limit)
         .bind(offset)
         .fetch_all(&state.pool)

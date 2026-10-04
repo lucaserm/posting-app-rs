@@ -25,3 +25,18 @@ pub struct LoginResponse {
 pub struct CreateCommentRequest {
     pub content: String,
 }
+#[derive(Serialize)]
+pub struct PostInput {
+    pub title: String,
+    pub content: String,
+}
+#[derive(Serialize)]
+pub struct PasswordChangeRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+#[derive(Clone, Deserialize, PartialEq)]
+pub struct User {
+    pub id: i64,
+    pub email: String,
+}

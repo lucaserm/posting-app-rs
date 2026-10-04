@@ -10,6 +10,11 @@ pub struct Comment {
 }
 
 #[derive(Deserialize)]
+pub struct UpdateCommentRequest {
+    pub content: String,
+}
+
+#[derive(Deserialize)]
 pub struct CreateCommentRequest {
     pub content: String,
 }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct ListPostsQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub search: Option<String>,
     pub sort: Option<String>,
 }
 

@@ -7,10 +7,10 @@ use crate::{
 
 pub mod extractor;
 pub mod handlers;
+pub mod password;
 pub mod token;
 
 mod models;
-mod password;
 
 pub fn routes() -> Router<AppState> {
     Router::new()

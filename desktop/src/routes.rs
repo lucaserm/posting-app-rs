@@ -1,4 +1,4 @@
-use crate::pages::{AuthPage, FeedPage, PostPage};
+use crate::pages::{AuthPage, ComposePostPage, FeedPage, PostPage, ProfilePage};
 use dioxus::prelude::*;
 #[derive(Routable, Clone, PartialEq)]
 pub enum Route {
@@ -9,4 +9,8 @@ pub enum Route {
     AuthPage {},
     #[route("/posts/:id")]
     PostPage { id: i64 },
+    #[route("/posts/new")]
+    ComposePostPage {},
+    #[route("/profile")]
+    ProfilePage {},
 }

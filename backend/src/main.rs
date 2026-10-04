@@ -4,6 +4,7 @@ mod error;
 mod health;
 mod posts;
 mod state;
+mod users;
 
 use axum::{Router, routing::get};
 use sqlx::postgres::PgPoolOptions;
@@ -37,6 +38,7 @@ async fn main() {
         .nest("/posts", posts::routes())
         .nest("/auth", auth::routes())
         .route("/users/me", get(auth::handlers::me))
+        .nest("/users", users::routes())
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
