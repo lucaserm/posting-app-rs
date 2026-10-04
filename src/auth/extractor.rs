@@ -42,3 +42,67 @@ impl FromRequestParts<AppState> for AuthUser {
         Ok(Self { user_id })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        extract::FromRequestParts,
+        http::{Request, header::AUTHORIZATION},
+    };
+    use sqlx::postgres::PgPoolOptions;
+
+    use super::AuthUser;
+    use crate::{auth::token::issue_access_token, state::AppState};
+
+    fn test_state() -> AppState {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://posts:posts@localhost/posts_api")
+            .unwrap();
+
+        AppState {
+            pool,
+            jwt_secret: String::from("unit-test-secret"),
+        }
+    }
+
+    #[tokio::test]
+    async fn accepts_a_valid_bearer_token() {
+        let state = test_state();
+        let token = issue_access_token(42, &state.jwt_secret).unwrap();
+
+        let request = Request::builder()
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .body(())
+            .unwrap();
+        let (mut parts, _) = request.into_parts();
+
+        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+
+        assert!(matches!(result, Ok(AuthUser { user_id: 42 })));
+    }
+
+    #[tokio::test]
+    async fn rejects_a_missing_token() {
+        let state = test_state();
+        let request = Request::new(());
+        let (mut parts, _) = request.into_parts();
+
+        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_an_invalid_token() {
+        let state = test_state();
+        let request = Request::builder()
+            .header(AUTHORIZATION, "Bearer invalid-token")
+            .body(())
+            .unwrap();
+        let (mut parts, _) = request.into_parts();
+
+        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+
+        assert!(result.is_err());
+    }
+}

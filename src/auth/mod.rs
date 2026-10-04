@@ -5,12 +5,12 @@ use crate::{
     state::AppState,
 };
 
-mod extractor;
+pub mod extractor;
+pub mod handlers;
+pub mod token;
+
 mod models;
 mod password;
-mod token;
-
-pub mod handlers;
 
 pub fn routes() -> Router<AppState> {
     Router::new()

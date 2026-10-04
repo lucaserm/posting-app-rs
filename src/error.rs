@@ -43,10 +43,10 @@ impl IntoResponse for ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
-        if let sqlx::Error::Database(database_error) = &error {
-            if database_error.constraint() == Some("users_email_key") {
-                return Self::Conflict(String::from("email is already registered"));
-            }
+        if let sqlx::Error::Database(database_error) = &error
+            && database_error.constraint() == Some("users_email_key")
+        {
+            return Self::Conflict(String::from("email is already registered"));
         }
 
         eprintln!("Database error: {error}");
