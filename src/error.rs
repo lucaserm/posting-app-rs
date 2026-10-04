@@ -8,6 +8,8 @@ use serde::Serialize;
 pub enum ApiError {
     NotFound,
     InvalidInput(String),
+    Unauthorized(Option<String>),
+    Conflict(String),
     InternalError,
 }
 
@@ -21,6 +23,14 @@ impl IntoResponse for ApiError {
         let (status, message) = match self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, String::from("resource not found")),
             ApiError::InvalidInput(message) => (StatusCode::BAD_REQUEST, message),
+            ApiError::Unauthorized(message) => (
+                StatusCode::UNAUTHORIZED,
+                match message {
+                    Some(message) => message,
+                    None => String::from("unauthorized"),
+                },
+            ),
+            ApiError::Conflict(message) => (StatusCode::CONFLICT, message),
             ApiError::InternalError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 String::from("internal server error"),
@@ -33,6 +43,12 @@ impl IntoResponse for ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(database_error) = &error {
+            if database_error.constraint() == Some("users_email_key") {
+                return Self::Conflict(String::from("email is already registered"));
+            }
+        }
+
         eprintln!("Database error: {error}");
         Self::InternalError
     }

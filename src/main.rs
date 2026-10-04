@@ -1,3 +1,4 @@
+mod auth;
 mod error;
 mod health;
 mod posts;
@@ -12,6 +13,7 @@ use crate::state::AppState;
 async fn main() {
     dotenvy::dotenv().ok();
 
+    let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     let pool = PgPoolOptions::new()
@@ -27,10 +29,14 @@ async fn main() {
 
     println!("connected to postgresql");
 
+    let state = AppState::new(pool, jwt_secret);
+
     let app = Router::new()
         .route("/health", get(health::health))
         .nest("/posts", posts::routes())
-        .with_state(AppState::new(pool));
+        .nest("/auth", auth::routes())
+        .route("/users/me", get(auth::handlers::me))
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
