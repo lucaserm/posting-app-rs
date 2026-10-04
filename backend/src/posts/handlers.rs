@@ -29,7 +29,7 @@ pub async fn create_post(
     let post = sqlx::query_as::<_, Post>(
         "INSERT INTO posts (title, content, author_id)
         VALUES ($1, $2, $3)
-        RETURNING id, title, content",
+        RETURNING id, title, content, 0::BIGINT AS comment_count",
     )
     .bind(title)
     .bind(content)
@@ -46,6 +46,7 @@ pub async fn list_posts(
 ) -> Result<Json<Vec<Post>>, ApiError> {
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
+    let sort = query.sort.as_deref().unwrap_or("recent");
 
     if !(1..=100).contains(&limit) {
         return Err(ApiError::InvalidInput(String::from(
@@ -58,18 +59,30 @@ pub async fn list_posts(
             "offset cannot be negative",
         )));
     }
+    if !matches!(sort, "recent" | "discussed") {
+        return Err(ApiError::InvalidInput(String::from(
+            "sort must be either recent or discussed",
+        )));
+    }
 
-    let posts = sqlx::query_as::<_, Post>(
-        "SELECT id, title, content
-        FROM posts
-        ORDER BY id DESC
-        LIMIT $1
-        OFFSET $2",
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(&state.pool)
-    .await?;
+    let order_by = if sort == "discussed" {
+        "comment_count DESC, posts.id DESC"
+    } else {
+        "posts.id DESC"
+    };
+    let query = format!(
+        "SELECT posts.id, posts.title, posts.content, COUNT(comments.id)::BIGINT AS comment_count
+         FROM posts
+         LEFT JOIN comments ON comments.post_id = posts.id
+         GROUP BY posts.id
+         ORDER BY {order_by}
+         LIMIT $1 OFFSET $2"
+    );
+    let posts = sqlx::query_as::<_, Post>(&query)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&state.pool)
+        .await?;
 
     Ok(Json(posts))
 }
@@ -78,11 +91,15 @@ pub async fn get_post(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Post>, ApiError> {
-    let post = sqlx::query_as::<_, Post>("SELECT id, title, content FROM posts WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let post = sqlx::query_as::<_, Post>(
+        "SELECT posts.id, posts.title, posts.content, COUNT(comments.id)::BIGINT AS comment_count
+         FROM posts LEFT JOIN comments ON comments.post_id = posts.id
+         WHERE posts.id = $1 GROUP BY posts.id",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
 
     Ok(Json(post))
 }
@@ -120,7 +137,7 @@ pub async fn update_post(
         "UPDATE posts
         SET title = $1, content = $2
         WHERE id = $3 AND author_id = $4
-        RETURNING id, title, content",
+        RETURNING id, title, content, 0::BIGINT AS comment_count",
     )
     .bind(title)
     .bind(content)
