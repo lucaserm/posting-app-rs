@@ -1,4 +1,5 @@
 mod auth;
+mod comments;
 mod error;
 mod health;
 mod posts;

@@ -7,7 +7,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 
-use crate::{posts::handlers::update_post, state::AppState};
+use crate::{comments, posts::handlers::update_post, state::AppState};
 use handlers::{create_post, delete_post, get_post, list_posts};
 
 pub fn routes() -> Router<AppState> {
@@ -17,4 +17,5 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}", get(get_post))
         .route("/{id}", delete(delete_post))
         .route("/{id}", put(update_post))
+        .merge(comments::routes())
 }
