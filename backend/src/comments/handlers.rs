@@ -92,8 +92,7 @@ pub async fn create_comment(
 
 pub async fn update_comment(
     State(state): State<AppState>,
-    Path(post_id): Path<i64>,
-    Path(comment_id): Path<i64>,
+    Path((post_id, comment_id)): Path<(i64, i64)>,
     AuthUser { user_id }: AuthUser,
     Json(input): Json<UpdateCommentRequest>,
 ) -> Result<Json<Comment>, ApiError> {
@@ -131,8 +130,7 @@ pub async fn update_comment(
 
 pub async fn delete_comment(
     State(state): State<AppState>,
-    Path(post_id): Path<i64>,
-    Path(comment_id): Path<i64>,
+    Path((post_id, comment_id)): Path<(i64, i64)>,
     AuthUser { user_id }: AuthUser,
 ) -> Result<StatusCode, ApiError> {
     let result = sqlx::query(

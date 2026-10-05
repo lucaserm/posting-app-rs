@@ -6,8 +6,13 @@ mod posts;
 mod state;
 mod users;
 
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    http::{Method, header::AUTHORIZATION},
+    routing::get,
+};
 use sqlx::postgres::PgPoolOptions;
+use tower_http::cors::CorsLayer;
 
 use crate::state::AppState;
 
@@ -33,13 +38,29 @@ async fn main() {
 
     let state = AppState::new(pool, jwt_secret);
 
+    let cors = CorsLayer::new()
+        .allow_origin(
+            "http://localhost:8080"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+        )
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([AUTHORIZATION, axum::http::header::CONTENT_TYPE]);
+
     let app = Router::new()
         .route("/health", get(health::health))
         .nest("/posts", posts::routes())
         .nest("/auth", auth::routes())
         .route("/users/me", get(auth::handlers::me))
         .nest("/users", users::routes())
-        .with_state(state);
+        .with_state(state)
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
