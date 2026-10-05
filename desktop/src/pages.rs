@@ -76,7 +76,11 @@ pub fn AuthPage() -> Element {
 #[component]
 pub fn PostPage(id: i64) -> Element {
     let auth = use_auth();
-    let post = use_resource(move || async move { api::post(id).await });
+    let mut post_reload = use_signal(|| 0_u64);
+    let post = use_resource(move || {
+        let _version = post_reload();
+        async move { api::post(id).await }
+    });
     let mut reload = use_signal(|| 0_u64);
     let comments = use_resource(move || {
         let _version = reload();
@@ -94,7 +98,12 @@ pub fn PostPage(id: i64) -> Element {
                 if editing() {
                     input { class: "field", value: "{edit_title}", oninput: move |e| edit_title.set(e.value()) }
                     textarea { class: "field comment-input", value: "{edit_content}", oninput: move |e| edit_content.set(e.value()) }
-                    if let Some(token) = auth() { button { class: "button button-primary", onclick: move |_| { let token = token.clone(); async move { let _ = api::update_post(id, &token, crate::types::PostInput { title: edit_title(), content: edit_content() }).await; editing.set(false); } }, "Save changes" } }
+                    if let Some(token) = auth() { button { class: "button button-primary", onclick: move |_| { let token = token.clone(); async move {
+                        if api::update_post(id, &token, crate::types::PostInput { title: edit_title(), content: edit_content() }).await.is_ok() {
+                            editing.set(false);
+                            post_reload.set(post_reload() + 1);
+                        }
+                    } }, "Save changes" } }
                 } else { h1 { "{post.title}" } p { class: "post-content", "{post.content}" }
                     if let Some(token) = auth() { div { class: "owner-actions",
                         button { class: "button button-secondary", onclick: move |_| { edit_title.set(post.title.clone()); edit_content.set(post.content.clone()); editing.set(true); }, "Edit post" }

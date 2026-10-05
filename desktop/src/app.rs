@@ -1,4 +1,4 @@
-use crate::routes::Route;
+use crate::{platform::session, routes::Route};
 use dioxus::prelude::*;
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -9,10 +9,7 @@ pub fn App() -> Element {
     use_context_provider(|| token);
     use_effect(move || {
         spawn(async move {
-            if let Ok(value) = document::eval("return localStorage.getItem('rustboard.jwt') || '';")
-                .join::<String>()
-                .await
-            {
+            if let Some(value) = session::load().await {
                 if !value.is_empty() {
                     token.set(Some(value));
                 }
@@ -26,12 +23,9 @@ pub fn App() -> Element {
             return;
         }
         if let Some(value) = value {
-            let encoded = serde_json::to_string(&value).unwrap_or_default();
-            document::eval(&format!(
-                "localStorage.setItem('rustboard.jwt', {encoded});"
-            ));
+            session::save(&value);
         } else {
-            document::eval("localStorage.removeItem('rustboard.jwt');");
+            session::clear();
         }
     });
     rsx! { document::Link { rel: "icon", href: FAVICON } document::Stylesheet { href: MAIN_CSS } Router::<Route> {} }

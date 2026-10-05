@@ -1,4 +1,24 @@
-# Development
+# Rustboard frontend
+
+The same Dioxus application runs on desktop, web, and mobile. Pages,
+components, routes, state, and the API client are shared in `src/`.
+
+```sh
+# Desktop
+cargo run -p rustboard
+
+# Web
+dx serve --platform web --package rustboard
+
+# Mobile
+dx serve --platform mobile --package rustboard
+```
+
+Run one platform at a time. Code with platform concerns belongs in
+`src/platform/`; the current session adapter uses WebView local storage. Use
+Keychain/Keystore-backed storage there before distributing a mobile build.
+
+## Development
 
 Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
 
@@ -47,4 +67,3 @@ To run for a different platform, use the `--platform platform` flag. E.g.
 ```bash
 dx serve --platform desktop
 ```
-

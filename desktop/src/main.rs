@@ -3,6 +3,7 @@ mod app;
 mod auth;
 mod components;
 mod pages;
+mod platform;
 mod routes;
 mod types;
 

@@ -1,5 +1,5 @@
 [package]
-name = "desktop"
+name = "rustboard"
 version = "0.1.0"
 authors = ["Lucas Macedo <lucasedumacedo@gmail.com>"]
 edition = "2021"
