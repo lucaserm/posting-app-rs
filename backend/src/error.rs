@@ -9,6 +9,7 @@ pub enum ApiError {
     NotFound,
     InvalidInput(String),
     Unauthorized(Option<String>),
+    SessionExpired,
     Conflict(String),
     InternalError,
 }
@@ -29,6 +30,10 @@ impl IntoResponse for ApiError {
                     Some(message) => message,
                     None => String::from("unauthorized"),
                 },
+            ),
+            ApiError::SessionExpired => (
+                StatusCode::from_u16(498).expect("498 is a valid HTTP status code"),
+                String::from("session expired"),
             ),
             ApiError::Conflict(message) => (StatusCode::CONFLICT, message),
             ApiError::InternalError => (

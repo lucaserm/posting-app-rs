@@ -1,5 +1,5 @@
 use crate::{
-    api,
+    api::{self, ApiClientError},
     auth::use_auth,
     components::{EmptyState, PostCard},
     routes::Route,
@@ -33,7 +33,7 @@ pub fn FeedPage() -> Element {
         div { class: "feed-grid", match &*posts.read() {
             Some(Ok(items)) if items.is_empty() => rsx! { EmptyState { title: "No posts yet", detail: "The first thoughtful note belongs here." } },
             Some(Ok(items)) => rsx! { for post in items { PostCard { post: post.clone() } } },
-            Some(Err(_)) => rsx! { EmptyState { title: "Could not reach the feed", detail: "Make sure the Rust API is running on port 3000, then refresh the app." } },
+            Some(Err(error)) => rsx! { EmptyState { title: "Could not load the feed", detail: "{error.user_message()}" } },
             None => rsx! { div { class: "loading-card", span { class: "loading-dot" } "Loading the latest posts…" } },
         }}
         div { class: "pagination",
@@ -61,7 +61,7 @@ pub fn AuthPage() -> Element {
                 event.prevent_default(); feedback.set("Signing in…".into());
                 match api::login(&LoginRequest { email: email(), password: password() }).await {
                     Ok(login) => { auth.set(Some(login.access_token)); password.set(String::new()); navigator.push(Route::FeedPage {}); }
-                    Err(_) => feedback.set("We could not sign you in. Check your details and try again.".into()),
+                    Err(error) => feedback.set(error.user_message()),
                 }
             },
                 label { "Email address" input { class: "field", r#type: "email", value: "{email}", oninput: move |e| email.set(e.value()) } }
@@ -69,7 +69,46 @@ pub fn AuthPage() -> Element {
                 button { class: "button button-primary", r#type: "submit", "Sign in" }
                 if !feedback().is_empty() { p { class: "feedback", "{feedback}" } }
             }
+            p { class: "auth-switch", "New here? " Link { to: Route::RegisterPage {}, "Create an account" } }
         }
+    } } }
+}
+
+#[component]
+pub fn RegisterPage() -> Element {
+    let mut email = use_signal(String::new);
+    let mut password = use_signal(String::new);
+    let mut confirmation = use_signal(String::new);
+    let mut feedback = use_signal(String::new);
+    let navigator = use_navigator();
+
+    rsx! { section { class: "page auth-page", div { class: "auth-card",
+        p { class: "eyebrow", "Create an account" }
+        h1 { "Join Rustboard." }
+        p { class: "subtitle", "Use at least 12 characters for your password." }
+        form { class: "auth-form", onsubmit: move |event| async move {
+            event.prevent_default();
+            if password() != confirmation() {
+                feedback.set("Passwords do not match.".to_string());
+                return;
+            }
+            feedback.set("Creating account…".to_string());
+            match api::register(&LoginRequest { email: email(), password: password() }).await {
+                Ok(_) => {
+                    password.set(String::new());
+                    confirmation.set(String::new());
+                    navigator.push(Route::AuthPage {});
+                }
+                Err(error) => feedback.set(error.user_message()),
+            }
+        },
+            label { "Email address" input { class: "field", r#type: "email", value: "{email}", oninput: move |event| email.set(event.value()) } }
+            label { "Password" input { class: "field", r#type: "password", value: "{password}", oninput: move |event| password.set(event.value()) } }
+            label { "Confirm password" input { class: "field", r#type: "password", value: "{confirmation}", oninput: move |event| confirmation.set(event.value()) } }
+            button { class: "button button-primary", r#type: "submit", "Create account" }
+            if !feedback().is_empty() { p { class: "feedback", "{feedback}" } }
+        }
+        p { class: "auth-switch", "Already have an account? " Link { to: Route::AuthPage {}, "Sign in" } }
     } } }
 }
 
@@ -99,23 +138,30 @@ pub fn PostPage(id: i64) -> Element {
                     input { class: "field", value: "{edit_title}", oninput: move |e| edit_title.set(e.value()) }
                     textarea { class: "field comment-input", value: "{edit_content}", oninput: move |e| edit_content.set(e.value()) }
                     if let Some(token) = auth() { button { class: "button button-primary", onclick: move |_| { let token = token.clone(); async move {
-                        if api::update_post(id, &token, crate::types::PostInput { title: edit_title(), content: edit_content() }).await.is_ok() {
-                            editing.set(false);
-                            post_reload.set(post_reload() + 1);
+                        match api::update_post(id, &token, crate::types::PostInput { title: edit_title(), content: edit_content() }).await {
+                            Ok(_) => { editing.set(false); post_reload.set(post_reload() + 1); feedback.set("Post updated.".into()); }
+                            Err(error) => feedback.set(error.user_message()),
                         }
                     } }, "Save changes" } }
                 } else { h1 { "{post.title}" } p { class: "post-content", "{post.content}" }
                     if let Some(token) = auth() { div { class: "owner-actions",
                         button { class: "button button-secondary", onclick: move |_| { edit_title.set(post.title.clone()); edit_content.set(post.content.clone()); editing.set(true); }, "Edit post" }
-                        button { class: "button button-danger", onclick: move |_| { let token = token.clone(); async move { if api::delete_post(id, &token).await.is_ok() { navigator.push(Route::FeedPage {}); } } }, "Delete post" }
+                        button { class: "button button-danger", onclick: move |_| { let token = token.clone(); async move {
+                            match api::delete_post(id, &token).await {
+                                Ok(_) => {
+                                    navigator.push(Route::FeedPage {});
+                                }
+                                Err(error) => feedback.set(error.user_message()),
+                            }
+                        } }, "Delete post" }
                     }}
                 }
             }} },
-            Some(Err(_)) => rsx! { EmptyState { title: "Post unavailable", detail: "It may have been removed or the API is not available." } },
+            Some(Err(error)) => rsx! { EmptyState { title: "Post unavailable", detail: "{error.user_message()}" } },
             None => rsx! { div { class: "loading-card", "Loading post…" } },
         }
         section { class: "discussion-section", div { class: "comments-heading", div { h2 { "Discussion" } p { "Add something useful to the thread." } } }
-            match &*comments.read() { Some(Ok(items)) => rsx! { div { class: "comment-list", for comment in items { EditableComment { comment: comment.clone(), post_id: id, reload } } } }, Some(Err(_)) => rsx! { p { class: "muted", "Comments could not be loaded." } }, None => rsx! { p { class: "muted", "Loading discussion…" } } }
+            match &*comments.read() { Some(Ok(items)) => rsx! { div { class: "comment-list", for comment in items { EditableComment { comment: comment.clone(), post_id: id, reload } } } }, Some(Err(error)) => rsx! { p { class: "muted", "{error.user_message()}" } }, None => rsx! { p { class: "muted", "Loading discussion…" } } }
             if let Some(token) = auth() {
                 form { class: "comment-form", onsubmit: move |event| {
                     let token = token.clone();
@@ -124,7 +170,7 @@ pub fn PostPage(id: i64) -> Element {
                     if text.is_empty() { feedback.set("Write a comment before posting.".into()); return; }
                     match api::create_comment(id, &token, text).await {
                         Ok(_) => { content.set(String::new()); feedback.set("Your reply has been added.".into()); reload.set(reload() + 1); }
-                        Err(_) => feedback.set("Your reply could not be added.".into()),
+                        Err(error) => feedback.set(error.user_message()),
                     }
                 }},
                     textarea { class: "field comment-input", value: "{content}", placeholder: "Share a considered response…", oninput: move |e| content.set(e.value()) }
@@ -144,16 +190,28 @@ fn EditableComment(
     let auth = use_auth();
     let mut editing = use_signal(|| false);
     let mut draft = use_signal(|| comment.content.clone());
+    let mut feedback = use_signal(String::new);
     rsx! { article { class: "comment-item", div { class: "comment-avatar", "{comment.user_id}" }
         div { class: "comment-body",
             if editing() { textarea { class: "field comment-input", value: "{draft}", oninput: move |e| draft.set(e.value()) }
-                if let Some(token) = auth() { button { class: "text-action", onclick: move |_| { let token = token.clone(); async move { if api::update_comment(post_id, comment.id, &token, draft()).await.is_ok() { editing.set(false); reload.set(reload() + 1); } } }, "Save" } }
+                if let Some(token) = auth() { button { class: "text-action", onclick: move |_| { let token = token.clone(); async move {
+                    match api::update_comment(post_id, comment.id, &token, draft()).await {
+                        Ok(_) => { editing.set(false); reload.set(reload() + 1); }
+                        Err(error) => feedback.set(error.user_message()),
+                    }
+                } }, "Save" } }
             } else { p { "{comment.content}" } small { "Community member · Reply #{comment.id}" }
                 if let Some(token) = auth() { div { class: "comment-actions",
                     button { class: "text-action", onclick: move |_| editing.set(true), "Edit" }
-                    button { class: "text-action danger-text", onclick: move |_| { let token = token.clone(); async move { if api::delete_comment(post_id, comment.id, &token).await.is_ok() { reload.set(reload() + 1); } } }, "Delete" }
+                    button { class: "text-action danger-text", onclick: move |_| { let token = token.clone(); async move {
+                        match api::delete_comment(post_id, comment.id, &token).await {
+                            Ok(_) => reload.set(reload() + 1),
+                            Err(error) => feedback.set(error.user_message()),
+                        }
+                    } }, "Delete" }
                 }}
             }
+            if !feedback().is_empty() { p { class: "feedback", "{feedback}" } }
         }
     } }
 }
@@ -172,7 +230,7 @@ pub fn ComposePostPage() -> Element {
                 event.prevent_default();
                 match api::create_post(&token, crate::types::PostInput { title: title(), content: content() }).await {
                     Ok(post) => { navigator.push(Route::PostPage { id: post.id }); }
-                    Err(_) => feedback.set("Your post could not be published. Check the API endpoint.".into()),
+                    Err(error) => feedback.set(error.user_message()),
                 }
             }},
                 label { "Title" input { class: "field", value: "{title}", oninput: move |e| title.set(e.value()) } }
@@ -186,13 +244,13 @@ pub fn ComposePostPage() -> Element {
 
 #[component]
 pub fn ProfilePage() -> Element {
-    let auth = use_auth();
+    let mut auth = use_auth();
     let profile = use_resource(move || {
         let token = auth();
         async move {
             match token {
-                Some(token) => api::me(&token).await.ok(),
-                None => None,
+                Some(token) => api::me(&token).await,
+                None => Err(ApiClientError::Unauthorized("No active session.".into())),
             }
         }
     });
@@ -202,15 +260,23 @@ pub fn ProfilePage() -> Element {
     rsx! { section { class: "page auth-page", div { class: "auth-card",
         p { class: "eyebrow", "Profile & security" } h1 { "Your account." }
         match &*profile.read() {
-            Some(Some(user)) => rsx! { div { class: "profile-summary", p { class: "profile-avatar", "{user.email.chars().next().unwrap_or('U')}" } div { strong { "{user.email}" } p { "Member #{user.id}" } } } },
-            Some(None) => rsx! { p { class: "muted", "Your profile could not be loaded." } },
+            Some(Ok(user)) => rsx! { div { class: "profile-summary", p { class: "profile-avatar", "{user.email.chars().next().unwrap_or('U')}" } div { strong { "{user.email}" } p { "Member #{user.id}" } } } },
+            Some(Err(error)) => rsx! { p { class: "muted", "{error.user_message()}" } },
             None => rsx! { p { class: "muted", "Loading profile…" } },
         }
         if let Some(token) = auth() { form { class: "auth-form", onsubmit: move |event| { let token = token.clone(); async move {
             event.prevent_default();
             match api::change_password(&token, crate::types::PasswordChangeRequest { current_password: current_password(), new_password: new_password() }).await {
                 Ok(_) => { current_password.set(String::new()); new_password.set(String::new()); feedback.set("Password updated.".into()); }
-                Err(_) => feedback.set("Password update failed. Implement the backend endpoint first.".into()),
+                Err(ApiClientError::Unauthorized(message)) => {
+                    auth.set(None);
+                    feedback.set(format!("Authentication is required: {message}"));
+                }
+                Err(ApiClientError::SessionExpired(message)) => {
+                    auth.set(None);
+                    feedback.set(format!("Your session has expired. Please sign in again: {message}"));
+                }
+                Err(error) => feedback.set(error.user_message()),
             }
         }},
             h2 { "Change password" }

@@ -2,6 +2,7 @@ use axum::{
     extract::FromRequestParts,
     http::{header::AUTHORIZATION, request::Parts},
 };
+use jsonwebtoken::errors::ErrorKind;
 
 use crate::{error::ApiError, state::AppState};
 
@@ -31,8 +32,13 @@ impl FromRequestParts<AppState> for AuthUser {
             return Err(ApiError::Unauthorized(None));
         }
 
-        let claims = verify_access_token(token, &state.jwt_secret)
-            .map_err(|_| ApiError::Unauthorized(None))?;
+        let claims = verify_access_token(token, &state.jwt_secret).map_err(|error| {
+            if matches!(error.kind(), ErrorKind::ExpiredSignature) {
+                ApiError::SessionExpired
+            } else {
+                ApiError::Unauthorized(None)
+            }
+        })?;
 
         let user_id = claims
             .sub
@@ -49,10 +55,15 @@ mod tests {
         extract::FromRequestParts,
         http::{Request, header::AUTHORIZATION},
     };
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use sqlx::postgres::PgPoolOptions;
 
     use super::AuthUser;
-    use crate::{auth::token::issue_access_token, state::AppState};
+    use crate::{
+        auth::token::{Claims, issue_access_token},
+        error::ApiError,
+        state::AppState,
+    };
 
     fn test_state() -> AppState {
         let pool = PgPoolOptions::new()
@@ -104,5 +115,29 @@ mod tests {
         let result = AuthUser::from_request_parts(&mut parts, &state).await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn reports_an_expired_token_as_session_expired() {
+        let state = test_state();
+        let expired_token = encode(
+            &Header::new(Algorithm::HS256),
+            &Claims {
+                sub: String::from("42"),
+                iat: 0,
+                exp: 1,
+            },
+            &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+        )
+        .unwrap();
+        let request = Request::builder()
+            .header(AUTHORIZATION, format!("Bearer {expired_token}"))
+            .body(())
+            .unwrap();
+        let (mut parts, _) = request.into_parts();
+
+        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+
+        assert!(matches!(result, Err(ApiError::SessionExpired)));
     }
 }
